@@ -1,0 +1,31 @@
+/* Add this block to the END of src/app/globals.css */
+.draft-save-status {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  border: 1px solid #dce5f3;
+  background: #f7faff;
+  color: #3f5875;
+  font-size: 13px;
+  font-weight: 650;
+}
+.draft-save-saved { color: #147d59; border-color: #cdebdc; background: #effbf5; }
+.draft-save-unsaved { color: #91610e; border-color: #f3ddb1; background: #fffaf0; }
+.draft-save-saving { color: #2357d7; border-color: #caddff; background: #f1f6ff; }
+.draft-save-error { color: #b42336; border-color: #f2c6cc; background: #fff5f6; }
+.draft-retry {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@keyframes draft-rotate { to { transform: rotate(360deg); } }
+.draft-spin { animation: draft-rotate 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .draft-spin { animation: none; } }

@@ -1,0 +1,8 @@
+'use client';
+import {useState} from 'react';
+import imageCompression from 'browser-image-compression';
+export function DocumentUpload({applicationId,category,label,documentId,onUploaded}:{applicationId:string;category:string;label:string;documentId?:string;onUploaded:(id:string)=>void}){
+ const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [preview,setPreview]=useState<string>('');
+ async function upload(file:File){setBusy(true);setError('');try{let actual=file;if(file.type.startsWith('image/')&&file.type!=='image/webp'){actual=await imageCompression(file,{maxSizeMB:2,maxWidthOrHeight:1800,useWebWorker:true,fileType:'image/jpeg'});}const form=new FormData();form.set('applicationId',applicationId);form.set('category',category);form.set('file',actual);const res=await fetch('/api/documents',{method:'POST',body:form});const json=await res.json();if(!res.ok)throw new Error(json.error||'Upload failed');onUploaded(json.id);setPreview(URL.createObjectURL(actual));}catch(e){setError(e instanceof Error?e.message:'Upload failed')}finally{setBusy(false)}}
+ return <div className="upload"><div><strong>{label}</strong><p className="muted">JPG, PNG, WebP or PDF • 5 MB maximum</p></div><input aria-label={label} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file)}}/>{busy&&<small>Compressing and uploading…</small>}{error&&<small className="error">{error}</small>}{(documentId||preview)&&<><p className="success">✓ Uploaded</p><a target="_blank" rel="noreferrer" href={documentId?`/api/documents/${documentId}`:preview}>View uploaded document</a></>}</div>
+}

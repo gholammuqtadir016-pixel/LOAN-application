@@ -1,0 +1,4 @@
+# Add these entries to your existing .gitignore
+.private-uploads/
+.env
+.env.local

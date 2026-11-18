@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+node_modules/
+out/
+
+# Private files
+uploads/
+private-uploads/
+storage/
+
+# Test reports
+test-results/
+playwright-report/
+playwright-report-phase7/
+
+# Logs
+*.log
+
+# Local backups
+*.backup

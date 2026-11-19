@@ -22,4 +22,5 @@ playwright-report-phase7/
 *.log
 
 # Local backups
-*.backup
+*.backup.prisma-composer/
+.alchemy/

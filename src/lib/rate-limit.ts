@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { prisma } from "@/lib/db";
+import { db, input } from "@/lib/db";
 
 /**
  * Database-backed fixed-window limiter. Atomic PostgreSQL upsert protects
@@ -12,8 +12,8 @@ export async function checkRateLimit(options: {
   limit: number;
   windowSeconds: number;
 }): Promise<{ allowed: boolean; retryAfter: number }> {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) throw new Error("AUTH_SECRET must be configured");
+  const { authSecret } = input();
+  const secret = authSecret.expose();
 
   const key = createHmac("sha256", secret)
     .update(`${options.scope}:${options.identity}`)
@@ -23,22 +23,25 @@ export async function checkRateLimit(options: {
   const cutoff = new Date(now.getTime() - options.windowSeconds * 1000);
 
   // Unique key + ON CONFLICT makes increment atomic across app processes.
-  const rows = await prisma.$queryRaw<
-    Array<{ count: number; windowStart: Date }>
-  >`
-    INSERT INTO "RateLimit" ("key", "windowStart", "count")
-    VALUES (${key}, ${now}, 1)
-    ON CONFLICT ("key") DO UPDATE SET
-      "count" = CASE
-        WHEN "RateLimit"."windowStart" <= ${cutoff} THEN 1
-        ELSE "RateLimit"."count" + 1
-      END,
-      "windowStart" = CASE
-        WHEN "RateLimit"."windowStart" <= ${cutoff} THEN ${now}
-        ELSE "RateLimit"."windowStart"
-      END
-    RETURNING "count", "windowStart";
-  `;
+  const rows = await db().client.query(
+    db().client.raw.sql`
+      INSERT INTO "RateLimit" ("key", "windowStart", "count")
+      VALUES (${key}, ${now.toISOString()}::timestamp, 1)
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE
+          WHEN "RateLimit"."windowStart" <= ${cutoff.toISOString()}::timestamp THEN 1
+          ELSE "RateLimit"."count" + 1
+        END,
+        "windowStart" = CASE
+          WHEN "RateLimit"."windowStart" <= ${cutoff.toISOString()}::timestamp THEN ${now.toISOString()}::timestamp
+          ELSE "RateLimit"."windowStart"
+        END
+      RETURNING "count", "windowStart";
+    `.returnsRow({
+      count: "pg/int4@1",
+      windowStart: "pg/timestamp-date@1",
+    }).build(),
+  );
 
   const record = rows[0];
   const expiresAt = record.windowStart.getTime() + options.windowSeconds * 1000;
@@ -50,7 +53,7 @@ export async function checkRateLimit(options: {
 
 /** Only trust an IP forwarded by infrastructure YOU operate/configure. */
 export function trustedIp(request: Request): string | null {
-  const headerName = process.env.TRUSTED_CLIENT_IP_HEADER;
+  const headerName = input().trustedClientIpHeader.expose();
   if (!headerName) return null;
   const value = request.headers.get(headerName)?.trim();
   // Must be overwritten by your trusted reverse proxy, not provided by clients.

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 
 type AuditEvent = {
   actorId?: string | null;
@@ -10,13 +10,11 @@ type AuditEvent = {
 /** Safe, minimal metadata only. Audit failures do not interrupt user operations. */
 export async function audit(event: AuditEvent): Promise<void> {
   try {
-    await prisma.securityAudit.create({
-      data: {
-        actorId: event.actorId ?? null,
-        applicationId: event.applicationId ?? null,
-        action: event.action,
-        outcome: event.outcome,
-      },
+    await db().client.orm.public.SecurityAudit.create({
+      actorId: event.actorId ?? null,
+      applicationId: event.applicationId ?? null,
+      action: event.action,
+      outcome: event.outcome,
     });
   } catch (cause) {
     console.error("Audit event could not be written", {

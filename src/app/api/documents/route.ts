@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { db, input } from "@/lib/db";
 import { currentUserId } from "@/lib/current-user";
 import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,8 +22,7 @@ const allowedCategories = new Set([
   "business",
   "signature",
 ]);
-const uploadDir = () =>
-  process.env.PRIVATE_UPLOAD_DIR || join(process.cwd(), ".private-uploads");
+const uploadDir = () => input().privateUploadDir.expose();
 
 export async function POST(request: NextRequest) {
   const userId = await currentUserId();
@@ -63,10 +62,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const application = await prisma.application.findFirst({
-      where: { id: applicationId, userId, status: "DRAFT" },
-      select: { id: true },
-    });
+    const application = await db().client.orm.public.Application.select("id")
+      .where({ id: applicationId, userId, status: "DRAFT" })
+      .first();
     if (!application)
       return NextResponse.json(
         { error: "Application unavailable" },
@@ -93,16 +91,14 @@ export async function POST(request: NextRequest) {
     await mkdir(uploadDir(), { recursive: true });
     await writeFile(diskPath, bytes, { flag: "wx", mode: 0o600 });
     try {
-      await prisma.document.create({
-        data: {
-          id,
-          applicationId,
-          category,
-          fileName: file.name.slice(0, 120),
-          mime: file.type,
-          bytes: bytes.length,
-          diskPath,
-        },
+      await db().client.orm.public.Document.create({
+        id,
+        applicationId,
+        category,
+        fileName: file.name.slice(0, 120),
+        mime: file.type,
+        bytes: bytes.length,
+        diskPath,
       });
     } catch (error) {
       await unlink(diskPath).catch(() => undefined);

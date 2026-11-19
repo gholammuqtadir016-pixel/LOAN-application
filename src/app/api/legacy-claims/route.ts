@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { currentUserId } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { tooManyRequests } from "@/lib/security-response";
@@ -48,17 +48,14 @@ export async function POST(request: Request) {
   }
 
   const ownerHash = createHash("sha256").update(token).digest("hex");
-  const result = await prisma.application.updateMany({
-    where: {
-      id: parsed.data.applicationId,
-      ownerHash,
-      userId: null,
-      status: "DRAFT",
-    },
-    data: { userId },
-  });
+  const changed = await db().client.orm.public.Application.where({
+    id: parsed.data.applicationId,
+    ownerHash,
+    userId: null,
+    status: "DRAFT",
+  }).updateAndCount({ userId });
 
-  if (result.count !== 1) {
+  if (changed !== 1) {
     return NextResponse.json(
       { error: "Legacy draft unavailable" },
       { status: 404 },

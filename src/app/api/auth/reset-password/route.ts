@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { checkRateLimit, trustedIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -48,26 +48,35 @@ export async function POST(request: Request) {
     const now = new Date();
 
     // Consume exactly once; updates to password and session generation are atomic.
-    const changed = await prisma.$transaction(async (tx) => {
-      const record = await tx.passwordResetToken.findUnique({
-        where: { tokenHash },
-        select: { id: true, userId: true, expiresAt: true, usedAt: true },
-      });
+    const changed = await db().client.transaction(async (tx) => {
+      const orm = tx.orm.public;
+      const record = await orm.PasswordResetToken.select(
+        "id",
+        "userId",
+        "expiresAt",
+        "usedAt",
+      ).where({ tokenHash }).first();
       if (!record || record.usedAt || record.expiresAt <= now) return false;
 
-      const consumed = await tx.passwordResetToken.updateMany({
-        where: { id: record.id, usedAt: null, expiresAt: { gt: now } },
-        data: { usedAt: now },
-      });
-      if (consumed.count !== 1) return false;
+      const consumed = await orm.PasswordResetToken.where((t) =>
+        t.id.eq(record.id)
+      )
+        .where((t) => t.usedAt.isNull())
+        .where((t) => t.expiresAt.gt(now))
+        .updateAndCount({ usedAt: now });
+      if (consumed !== 1) return false;
 
-      await tx.user.update({
-        where: { id: record.userId },
-        data: { passwordHash, sessionVersion: { increment: 1 } },
-      });
-      await tx.passwordResetToken.deleteMany({
-        where: { userId: record.userId, usedAt: null },
-      });
+      await tx.execute(
+        tx.raw.sql`
+          UPDATE "User"
+          SET "passwordHash" = ${passwordHash},
+              "sessionVersion" = "sessionVersion" + 1
+          WHERE "id" = ${record.userId}
+        `.affectedCount().build(),
+      );
+      await orm.PasswordResetToken.where((t) => t.userId.eq(record.userId))
+        .where((t) => t.usedAt.isNull())
+        .deleteAll();
       return true;
     });
 

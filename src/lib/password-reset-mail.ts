@@ -1,12 +1,15 @@
 /**
  * Transactional reset email via Resend's HTTPS API.
- * Configure RESEND_API_KEY, RESET_EMAIL_FROM and APP_BASE_URL in .env.
- * Never log URLs or reset tokens.
+ * The Resend key, from address and public origin are bound in module.mjs and
+ * read from the service's input. Never log URLs or reset tokens.
  */
+import { input } from "@/lib/db";
+
 export async function sendPasswordResetEmail(email: string, token: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESET_EMAIL_FROM;
-  const origin = process.env.APP_BASE_URL;
+  const { resendApiKey, resetEmailFrom, appBaseUrl } = input();
+  const apiKey = resendApiKey.expose();
+  const from = resetEmailFrom.expose();
+  const origin = appBaseUrl.expose();
 
   if (!apiKey || !from || !origin) {
     throw new Error("Password-reset email provider is not configured");

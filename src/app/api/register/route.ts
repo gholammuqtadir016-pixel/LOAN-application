@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { isUniqueConstraintViolation } from "@prisma/orm-family-sql/errors";
+import { db } from "@/lib/db";
 import { checkRateLimit, trustedIp } from "@/lib/rate-limit";
 import { tooManyRequests } from "@/lib/security-response";
 
@@ -53,15 +54,15 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(result.data.password, 12);
-    await prisma.user.create({
-      data: { name: result.data.name, email: result.data.email, passwordHash },
+    await db().client.orm.public.User.create({
+      id: randomUUID(),
+      name: result.data.name,
+      email: result.data.email,
+      passwordHash,
     });
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (isUniqueConstraintViolation(error)) {
       return NextResponse.json(
         { error: "Unable to create account with these details." },
         { status: 409 },

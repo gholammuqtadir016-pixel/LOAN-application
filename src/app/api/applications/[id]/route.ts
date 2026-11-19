@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/security";
 import { currentUserId } from "@/lib/current-user";
 import { loanSchema } from "@/lib/validations";
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 type Context = { params: Promise<{ id: string }> };
 
 async function ownedApplication(id: string, userId: string) {
-  return prisma.application.findFirst({ where: { id, userId } });
+  return db().client.orm.public.Application.where({ id, userId }).first();
 }
 
 function validVersion(value: unknown): value is number {
@@ -77,11 +77,22 @@ export async function PATCH(request: NextRequest, { params }: Context) {
       return privateJson({ error: "Invalid draft fields" }, 400);
 
     // Atomic compare-and-swap. A stale tab cannot overwrite the latest revision.
-    const result = await prisma.application.updateMany({
-      where: { id, userId, status: "DRAFT", version: body.version },
-      data: { ...encrypt(parsed.data), version: { increment: 1 } },
-    });
-    if (result.count !== 1) {
+    const changed = encrypt(parsed.data);
+    const { affectedRows } = await db().client.execute(
+      db().client.raw.sql`
+        UPDATE "Application"
+        SET "encrypted" = ${changed.encrypted},
+            "iv" = ${changed.iv},
+            "tag" = ${changed.tag},
+            "version" = "version" + 1,
+            "updatedAt" = ${new Date().toISOString()}::timestamp
+        WHERE "id" = ${id}
+          AND "userId" = ${userId}
+          AND "status" = 'DRAFT'
+          AND "version" = ${body.version}
+      `.affectedCount().build(),
+    );
+    if (affectedRows !== 1) {
       const current = await ownedApplication(id, userId);
       if (!current) return privateJson({ error: "Not found" }, 404);
       await audit({
@@ -149,10 +160,10 @@ export async function POST(request: NextRequest, { params }: Context) {
       ...categories.map((category) => loan.documentIds[category]),
       loan.signatureId,
     ];
-    const documents = await prisma.document.findMany({
-      where: { applicationId: id, id: { in: documentIds } },
-      select: { id: true },
-    });
+    const documents = await db().client.orm.public.Document.select("id")
+      .where((d) => d.applicationId.eq(id))
+      .where((d) => d.id.in(documentIds))
+      .all();
     const found = new Set(documents.map((document) => document.id));
     if (documentIds.some((docId) => !found.has(docId))) {
       return privateJson(
@@ -161,15 +172,23 @@ export async function POST(request: NextRequest, { params }: Context) {
       );
     }
 
-    const result = await prisma.application.updateMany({
-      where: { id, userId, status: "DRAFT", version: body.version },
-      data: {
-        ...encrypt(loan),
-        status: "SUBMITTED",
-        version: { increment: 1 },
-      },
-    });
-    if (result.count !== 1) {
+    const changed = encrypt(loan);
+    const { affectedRows } = await db().client.execute(
+      db().client.raw.sql`
+        UPDATE "Application"
+        SET "encrypted" = ${changed.encrypted},
+            "iv" = ${changed.iv},
+            "tag" = ${changed.tag},
+            "status" = 'SUBMITTED',
+            "version" = "version" + 1,
+            "updatedAt" = ${new Date().toISOString()}::timestamp
+        WHERE "id" = ${id}
+          AND "userId" = ${userId}
+          AND "status" = 'DRAFT'
+          AND "version" = ${body.version}
+      `.affectedCount().build(),
+    );
+    if (affectedRows !== 1) {
       const current = await ownedApplication(id, userId);
       if (!current) return privateJson({ error: "Not found" }, 404);
       await audit({

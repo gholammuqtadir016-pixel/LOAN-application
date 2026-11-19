@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { currentUserId } from "@/lib/current-user";
 
 export const runtime = "nodejs";
@@ -14,9 +14,11 @@ export async function GET(
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
 
   const { id } = await params;
-  const document = await prisma.document.findFirst({
-    where: { id, application: { userId } },
-  });
+  const document = await db().client.orm.public.Document.where((d) =>
+    d.id.eq(id),
+  )
+    .where((d) => d.application.some((a) => a.userId.eq(userId)))
+    .first();
   if (!document)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
 

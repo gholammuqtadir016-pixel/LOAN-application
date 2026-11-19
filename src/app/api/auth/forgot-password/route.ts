@@ -1,10 +1,10 @@
 
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash, randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { prisma } from "@/lib/db";
+import { db, input } from "@/lib/db";
 import { checkRateLimit, trustedIp } from "@/lib/rate-limit";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 
@@ -100,15 +100,9 @@ export async function POST(request: Request) {
     // STEP 4: FIND REGISTERED USER
     // -------------------------------------------------
 
-    const user = await prisma.user.findUnique({
-      where: {
-        email,
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
+    const user = await db().client.orm.public.User.select("id", "email")
+      .where({ email })
+      .first();
 
     if (!user) {
       console.info(
@@ -123,19 +117,19 @@ export async function POST(request: Request) {
     // -------------------------------------------------
 
     const requiredVariables = [
-      "RESEND_API_KEY",
-      "RESET_EMAIL_FROM",
-      "APP_BASE_URL",
-    ] as const;
+      { name: "RESEND_API_KEY", value: input().resendApiKey.expose() },
+      { name: "RESET_EMAIL_FROM", value: input().resetEmailFrom.expose() },
+      { name: "APP_BASE_URL", value: input().appBaseUrl.expose() },
+    ];
 
     const missingVariables = requiredVariables.filter(
-      (name) => !process.env[name]
+      (variable) => !variable.value,
     );
 
     if (missingVariables.length > 0) {
       console.error(
         "[PASSWORD RESET] Missing environment variables:",
-        missingVariables.join(", ")
+        missingVariables.map((variable) => variable.name).join(", ")
       );
 
       return NextResponse.json(genericResponse);
@@ -161,15 +155,11 @@ export async function POST(request: Request) {
     // -------------------------------------------------
 
     const savedToken =
-      await prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-        },
-        select: {
-          id: true,
-        },
+      await db().client.orm.public.PasswordResetToken.create({
+        id: randomUUID(),
+        userId: user.id,
+        tokenHash,
+        expiresAt,
       });
 
     // -------------------------------------------------
@@ -195,11 +185,9 @@ export async function POST(request: Request) {
 
       // Delete unusable token if delivery fails.
       try {
-        await prisma.passwordResetToken.delete({
-          where: {
-            id: savedToken.id,
-          },
-        });
+        await db().client.orm.public.PasswordResetToken.where((t) =>
+          t.id.eq(savedToken.id),
+        ).deleteAll();
       } catch {
         console.error(
           "[PASSWORD RESET] Failed to clean up reset token."

@@ -5,9 +5,10 @@ import {
   createDecipheriv,
 } from "node:crypto";
 import { cookies } from "next/headers";
+import { input } from "@/lib/db";
 const COOKIE = "loan_session";
 function key() {
-  const raw = process.env.DATA_ENCRYPTION_KEY || "";
+  const raw = input().dataEncryptionKey.expose();
   if (!/^[a-f0-9]{64}$/i.test(raw))
     throw new Error("DATA_ENCRYPTION_KEY must be 64 hex characters");
   return Buffer.from(raw, "hex");

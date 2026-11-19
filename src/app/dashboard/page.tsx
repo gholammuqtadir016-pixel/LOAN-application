@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { signOut } from "@/auth";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
 import { currentUserId } from "@/lib/current-user";
 import { OpenApplication } from "@/components/auth/OpenApplication";
 
@@ -9,12 +9,17 @@ export default async function DashboardPage() {
   const userId = await currentUserId();
   if (!userId) redirect("/login");
 
-  const applications = await prisma.application.findMany({
-    where: { userId },
-    select: { id: true, status: true, createdAt: true, updatedAt: true },
-    orderBy: { updatedAt: "desc" },
-    take: 50,
-  });
+  const applications = await db()
+    .client.orm.public.Application.select(
+      "id",
+      "status",
+      "createdAt",
+      "updatedAt",
+    )
+    .where({ userId })
+    .orderBy((application) => application.updatedAt.desc())
+    .limit(50)
+    .all();
 
   return (
     <main className="dashboard-shell">

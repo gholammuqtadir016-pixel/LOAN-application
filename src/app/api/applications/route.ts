@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { randomUUID } from "node:crypto";
+import { db } from "@/lib/db";
 import { encrypt } from "@/lib/security";
 import { currentUserId } from "@/lib/current-user";
 import { EMPTY_LOAN } from "@/types/loan";
@@ -21,8 +22,11 @@ export async function POST() {
       windowSeconds: 60 * 60,
     });
     if (!limit.allowed) return tooManyRequests(limit.retryAfter);
-    const application = await prisma.application.create({
-      data: { userId, ...encrypt(EMPTY_LOAN) },
+    const application = await db().client.orm.public.Application.create({
+      id: randomUUID(),
+      userId,
+      ...encrypt(EMPTY_LOAN),
+      updatedAt: new Date(),
     });
     return NextResponse.json(
       { id: application.id, data: EMPTY_LOAN, version: application.version },

@@ -21,6 +21,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/react-signature-canvas": "^1.0.7",
+    "dotenv-cli": "^11.1.0",
     "postcss": "^8.5.33",
     "prisma": "^6.19.0",
     "tailwindcss": "^4.3.5",
